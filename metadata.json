@@ -1,0 +1,8 @@
+{
+  "name": "INT Inc Universal Dashboard Engine",
+  "description": "A world-class enterprise dashboard engine supporting 13 departments with real-time analytics, AI insights, and multi-platform data ingestion.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
