@@ -1,0 +1,25 @@
+
+{
+  "name": "INT Inc Universal Dashboard",
+  "short_name": "INT Dashboard",
+  "description": "Enterprise-grade real-time analytics and AI dashboard.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#2563eb",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "https://api.dicebear.com/7.x/initials/svg?seed=INT&backgroundColor=2563eb",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://api.dicebear.com/7.x/initials/svg?seed=INT&backgroundColor=2563eb",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

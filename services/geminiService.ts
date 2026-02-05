@@ -1,6 +1,6 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
-import { AIInsight, DepartmentConfig } from "../types";
+import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { AIInsight, DepartmentConfig, DepartmentCategory } from "../types";
 
 // Always use process.env.API_KEY directly for initialization as per guidelines
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -21,7 +21,7 @@ export async function getAIInsights(dept: DepartmentConfig): Promise<AIInsight[]
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.5-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -47,6 +47,68 @@ export async function getAIInsights(dept: DepartmentConfig): Promise<AIInsight[]
   } catch (error) {
     console.error("Gemini Error:", error);
     return getDefaultInsights(dept);
+  }
+}
+
+export async function generateDashboardFromInput(inputText: string): Promise<DepartmentConfig | null> {
+  const prompt = `
+    Analyze the following unstructured document text and extract a structured Dashboard Configuration for a corporate department.
+    
+    DOCUMENT TEXT:
+    "${inputText.substring(0, 30000)}" 
+    
+    REQUIREMENTS:
+    1. Infer the Department Name and Category (Service Delivery, Support, or Executive).
+    2. Extract up to 6 Key Performance Indicators (KPIs).
+    3. For each KPI, infer a current value, a unit (%, $, #, etc), a target value, and a status based on the context.
+    4. Return a JSON object matching the DepartmentConfig structure.
+  `;
+
+  const kpiSchema: Schema = {
+    type: Type.OBJECT,
+    properties: {
+      id: { type: Type.STRING },
+      label: { type: Type.STRING },
+      description: { type: Type.STRING },
+      value: { type: Type.NUMBER },
+      unit: { type: Type.STRING },
+      target: { type: Type.NUMBER },
+      trend: { type: Type.STRING, enum: ['up', 'down', 'flat'] },
+      change: { type: Type.NUMBER },
+      status: { type: Type.STRING, enum: ['on-track', 'at-risk', 'critical'] }
+    },
+    required: ['id', 'label', 'value', 'unit', 'target', 'status']
+  };
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash", // Using 2.5 Flash for fast document processing
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            id: { type: Type.STRING },
+            name: { type: Type.STRING },
+            category: { type: Type.STRING, enum: Object.values(DepartmentCategory) },
+            description: { type: Type.STRING },
+            kpis: {
+              type: Type.ARRAY,
+              items: kpiSchema
+            }
+          },
+          required: ['id', 'name', 'category', 'kpis']
+        }
+      }
+    });
+
+    const text = response.text;
+    if (!text) return null;
+    return JSON.parse(text);
+  } catch (error) {
+    console.error("Dashboard Generation Error:", error);
+    throw new Error("Failed to generate dashboard from document.");
   }
 }
 

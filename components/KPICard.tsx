@@ -84,7 +84,8 @@ const KPICard: React.FC<Props> = ({
     const filter = (node: HTMLElement) => {
       return !node.classList?.contains('export-controls') && 
              !node.classList?.contains('edit-btn') &&
-             !node.classList?.contains('history-btn');
+             !node.classList?.contains('history-btn') &&
+             !node.classList?.contains('selection-overlay');
     };
 
     try {
@@ -108,8 +109,8 @@ const KPICard: React.FC<Props> = ({
         className={`group relative p-5 rounded-xl border transition-all duration-300 h-40 flex flex-col justify-between 
           ${isSelectMode 
             ? isSelected 
-              ? 'bg-blue-900/20 border-blue-500 ring-2 ring-blue-500/50 scale-[1.02]' 
-              : `bg-slate-800/30 border-slate-700/50 hover:bg-slate-800/50 hover:border-slate-600 opacity-80 hover:opacity-100`
+              ? 'bg-blue-600/20 border-blue-500 ring-2 ring-blue-500 shadow-lg shadow-blue-500/20 scale-[1.02]' 
+              : `bg-slate-800/40 border-slate-700/50 hover:bg-slate-800/60 hover:border-slate-500 opacity-90 hover:opacity-100 cursor-pointer`
             : `${statusColors[kpi.status]} bg-slate-800/50 hover:scale-[1.02]`
           } 
           ${isSelectMode ? 'cursor-pointer' : ''}`}
@@ -118,12 +119,12 @@ const KPICard: React.FC<Props> = ({
         aria-checked={isSelectMode ? isSelected : undefined}
       >
         {isSelectMode ? (
-          <div className="absolute inset-0 z-10 flex items-start justify-end p-3 pointer-events-none">
-            <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all duration-200 ${isSelected ? 'bg-blue-600 border-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.4)] scale-110' : 'border-slate-600 bg-slate-900/80 group-hover:border-slate-400'}`}>
-              {isSelected && <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+          <div className="selection-overlay absolute inset-0 z-10 flex items-start justify-end p-3 pointer-events-none">
+            <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${isSelected ? 'bg-blue-500 border-blue-500 shadow-lg scale-110' : 'border-slate-500 bg-slate-900/80 group-hover:border-slate-300'}`}>
+              {isSelected && <svg className="w-4 h-4 text-white font-bold" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
             </div>
             {isSelected && (
-              <div className="absolute inset-0 bg-blue-500/5 rounded-xl pointer-events-none" />
+              <div className="absolute inset-0 bg-blue-500/5 rounded-xl pointer-events-none animate-in fade-in duration-200" />
             )}
           </div>
         ) : (
@@ -215,7 +216,7 @@ const KPICard: React.FC<Props> = ({
         
         <div className="mt-2">
           <div className="flex items-end justify-between">
-            <h3 className="text-3xl font-bold text-white">
+            <h3 className={`text-3xl font-bold transition-colors ${isSelectMode && isSelected ? 'text-blue-200' : 'text-white'}`}>
               {kpi.value}<span className="text-lg text-slate-400 ml-0.5">{kpi.unit}</span>
             </h3>
             <div className="flex items-center text-sm font-medium">
@@ -236,7 +237,7 @@ const KPICard: React.FC<Props> = ({
 
         <div className="mt-2 text-[10px] opacity-60 font-medium flex justify-between items-center">
           <span>Target: {kpi.target}{kpi.unit}</span>
-          {isSelectMode && <span className="text-blue-400 italic font-bold">Select to edit</span>}
+          {isSelectMode && isSelected && <span className="text-blue-400 italic font-bold">Selected</span>}
         </div>
       </div>
 
