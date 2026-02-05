@@ -8,6 +8,7 @@ export enum DepartmentCategory {
 export interface KPI {
   id: string;
   label: string;
+  description?: string;
   value: number | string;
   unit: string;
   target: number;

@@ -6,6 +6,11 @@ import { AIInsight, DepartmentConfig } from "../types";
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export async function getAIInsights(dept: DepartmentConfig): Promise<AIInsight[]> {
+  // Defensive check for empty data
+  if (!dept || !dept.kpis || dept.kpis.length === 0) {
+    return getDefaultInsights(dept);
+  }
+
   const prompt = `
     As an expert business analyst, analyze the current performance of the ${dept.name} department at INT Inc.
     Current KPIs: ${dept.kpis.map(k => `${k.label}: ${k.value}${k.unit} (Target: ${k.target}${k.unit})`).join(', ')}.
@@ -36,7 +41,6 @@ export async function getAIInsights(dept: DepartmentConfig): Promise<AIInsight[]
       }
     });
 
-    // Access text property directly from GenerateContentResponse
     const text = response.text;
     if (!text) return getDefaultInsights(dept);
     return JSON.parse(text);
@@ -47,22 +51,27 @@ export async function getAIInsights(dept: DepartmentConfig): Promise<AIInsight[]
 }
 
 function getDefaultInsights(dept: DepartmentConfig): AIInsight[] {
+  const deptName = dept?.name || "Department";
+  const primaryKpi = dept?.kpis?.[0];
+
   return [
     {
       title: "Efficiency Optimization",
-      description: `Targeting automated workflows for ${dept.name} to reduce manual oversight.`,
+      description: `Targeting automated workflows for ${deptName} to reduce manual oversight.`,
       priority: 'medium',
       impact: "15% reduction in cycle time"
     },
     {
       title: "Risk Mitigation",
-      description: `Historical data suggests seasonal fluctuations in ${dept.kpis[0]?.label}.`,
+      description: primaryKpi 
+        ? `Historical data suggests seasonal fluctuations in ${primaryKpi.label}.`
+        : `Monitor key performance indicators for stability.`,
       priority: 'high',
       impact: "Prevention of SLA breaches"
     },
     {
       title: "Upsell Opportunity",
-      description: `Current performance maturity level 3 indicates readiness for higher-tier service expansion.`,
+      description: `Current performance maturity indicates readiness for higher-tier service expansion.`,
       priority: 'low',
       impact: "Increase in average account value"
     }
