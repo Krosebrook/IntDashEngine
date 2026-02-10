@@ -1,14 +1,29 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { AIInsight, DepartmentConfig, DepartmentCategory } from "../types";
+import { db } from "../lib/db";
 
 // Always use process.env.API_KEY directly for initialization as per guidelines
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+// Create a deterministic hash of the department state
+const generateHash = (dept: DepartmentConfig): string => {
+  const coreData = dept.kpis.map(k => `${k.id}:${k.value}:${k.target}`).join('|');
+  return `${dept.id}-${coreData}`;
+};
 
 export async function getAIInsights(dept: DepartmentConfig): Promise<AIInsight[]> {
   // Defensive check for empty data
   if (!dept || !dept.kpis || dept.kpis.length === 0) {
     return getDefaultInsights(dept);
+  }
+
+  // 1. Check Cache
+  const hash = generateHash(dept);
+  const cached = await db.getInsight(hash);
+  if (cached) {
+    console.log(`[AI Cache Hit] Returning cached insights for ${dept.name}`);
+    return cached;
   }
 
   const prompt = `
@@ -43,7 +58,13 @@ export async function getAIInsights(dept: DepartmentConfig): Promise<AIInsight[]
 
     const text = response.text;
     if (!text) return getDefaultInsights(dept);
-    return JSON.parse(text);
+    
+    const insights = JSON.parse(text);
+    
+    // 2. Save to Cache
+    await db.saveInsight(hash, insights);
+    
+    return insights;
   } catch (error) {
     console.error("Gemini Error:", error);
     return getDefaultInsights(dept);

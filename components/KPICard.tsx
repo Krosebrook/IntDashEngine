@@ -102,11 +102,22 @@ const KPICard: React.FC<Props> = ({
     }
   };
 
+  // Keyboard accessibility handler
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (isSelectMode && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      onToggleSelect?.();
+    }
+  };
+
   return (
     <>
       <div 
         ref={cardRef}
-        className={`group relative p-5 rounded-xl border transition-all duration-300 h-40 flex flex-col justify-between 
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+        aria-label={`${kpi.label}: ${kpi.value}${kpi.unit}. Status: ${kpi.status}. Trend: ${kpi.trend} by ${Math.abs(kpi.change)}%.`}
+        className={`group relative p-5 rounded-xl border transition-all duration-300 h-40 flex flex-col justify-between focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-blue-500
           ${isSelectMode 
             ? isSelected 
               ? 'bg-blue-600/20 border-blue-500 ring-2 ring-blue-500 shadow-lg shadow-blue-500/20 scale-[1.02]' 
@@ -133,8 +144,9 @@ const KPICard: React.FC<Props> = ({
                {/* History Button */}
                <button
                   onClick={(e) => { e.stopPropagation(); setShowHistory(true); }}
-                  className="history-btn p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg border border-slate-700 hover:border-slate-600 transition-all backdrop-blur-sm shadow-sm opacity-0 group-hover:opacity-100"
+                  className="history-btn p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg border border-slate-700 hover:border-slate-600 transition-all backdrop-blur-sm shadow-sm opacity-0 group-hover:opacity-100 focus:opacity-100"
                   title="View History"
+                  aria-label={`View history for ${kpi.label}`}
                >
                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
@@ -144,8 +156,9 @@ const KPICard: React.FC<Props> = ({
               {canEdit && (
                 <button 
                   onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
-                  className="edit-btn p-1.5 bg-slate-800 hover:bg-blue-600 text-slate-400 hover:text-white rounded-lg border border-slate-700 hover:border-blue-500 transition-all backdrop-blur-sm shadow-sm"
+                  className="edit-btn p-1.5 bg-slate-800 hover:bg-blue-600 text-slate-400 hover:text-white rounded-lg border border-slate-700 hover:border-blue-500 transition-all backdrop-blur-sm shadow-sm opacity-0 group-hover:opacity-100 focus:opacity-100"
                   title="Edit KPI"
+                  aria-label={`Edit ${kpi.label}`}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -155,11 +168,11 @@ const KPICard: React.FC<Props> = ({
             </div>
             
             {/* Export Controls */}
-            <div className="export-controls absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 flex gap-1 z-20 bg-slate-900/90 rounded-lg p-0.5 border border-slate-700 shadow-xl transition-all">
-              <button onClick={handleExportCSV} className="p-1 hover:bg-slate-800 rounded text-[9px] font-bold text-slate-400 hover:text-white uppercase px-1.5">CSV</button>
+            <div className="export-controls absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 flex gap-1 z-20 bg-slate-900/90 rounded-lg p-0.5 border border-slate-700 shadow-xl transition-all focus-within:opacity-100">
+              <button onClick={handleExportCSV} className="p-1 hover:bg-slate-800 rounded text-[9px] font-bold text-slate-400 hover:text-white uppercase px-1.5 focus:text-white">CSV</button>
               <div className="w-[1px] bg-slate-700 my-0.5"></div>
-              <button onClick={(e) => handleExportImage(e, 'png')} className="p-1 hover:bg-slate-800 rounded text-[9px] font-bold text-slate-400 hover:text-white uppercase px-1.5">PNG</button>
-              <button onClick={(e) => handleExportImage(e, 'svg')} className="p-1 hover:bg-slate-800 rounded text-[9px] font-bold text-slate-400 hover:text-white uppercase px-1.5">SVG</button>
+              <button onClick={(e) => handleExportImage(e, 'png')} className="p-1 hover:bg-slate-800 rounded text-[9px] font-bold text-slate-400 hover:text-white uppercase px-1.5 focus:text-white">PNG</button>
+              <button onClick={(e) => handleExportImage(e, 'svg')} className="p-1 hover:bg-slate-800 rounded text-[9px] font-bold text-slate-400 hover:text-white uppercase px-1.5 focus:text-white">SVG</button>
             </div>
           </>
         )}
@@ -169,6 +182,12 @@ const KPICard: React.FC<Props> = ({
             className="relative group/tooltip"
             onMouseEnter={() => setShowTooltip(true)}
             onMouseLeave={() => setShowTooltip(false)}
+            onFocus={() => setShowTooltip(true)}
+            onBlur={() => setShowTooltip(false)}
+            tabIndex={0}
+            role="button"
+            aria-expanded={showTooltip}
+            aria-label="Show details"
           >
             <span className="text-xs font-semibold uppercase tracking-wider opacity-70 cursor-help border-b border-dashed border-slate-600 hover:border-slate-400 transition-colors">
               {kpi.label}
@@ -231,6 +250,10 @@ const KPICard: React.FC<Props> = ({
             <div 
               className={`h-full rounded-full bg-gradient-to-r ${progressColors[kpi.status]} transition-all duration-1000`} 
               style={{ width: `${progressPercent}%` }}
+              role="progressbar"
+              aria-valuenow={progressPercent}
+              aria-valuemin={0}
+              aria-valuemax={100}
             ></div>
           </div>
         </div>
@@ -253,9 +276,9 @@ const KPICard: React.FC<Props> = ({
       )}
 
       {showHistory && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl p-6 relative animate-in fade-in zoom-in-95 duration-200">
-             <button onClick={() => setShowHistory(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white">✕</button>
+             <button onClick={() => setShowHistory(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white" aria-label="Close history">✕</button>
              <h3 className="text-xl font-bold text-white mb-1">{kpi.label} History</h3>
              <p className="text-sm text-slate-400 mb-6">Historical performance over the last 30 days</p>
              <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800">

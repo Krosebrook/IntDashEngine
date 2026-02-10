@@ -1,24 +1,25 @@
 
-const CACHE_NAME = 'int-dashboard-v1';
-const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/index.tsx',
-  '/manifest.json'
+const CACHE_NAME = 'int-dashboard-v2'; // Incremented version
+const OFFLINE_URL = 'offline.html';
+const ASSETS_TO_PRECACHE = [
+  './',
+  'index.html',
+  'index.tsx',
+  'manifest.json',
+  OFFLINE_URL
 ];
 
-// Install Event - Pre-cache core assets
+// Pre-cache on install
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('[SW] Pre-caching core assets');
-      return cache.addAll(ASSETS_TO_CACHE);
+      console.log('[SW] Pre-caching core assets and offline page');
+      return cache.addAll(ASSETS_TO_PRECACHE);
     })
   );
   self.skipWaiting();
 });
 
-// Activate Event - Clean up old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -35,32 +36,46 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Fetch Event - Stale-While-Revalidate for JS/CSS/ESM
 self.addEventListener('fetch', (event) => {
-  // Only cache GET requests
   if (event.request.method !== 'GET') return;
 
-  // Ignore API calls and Gemini requests for standard caching
-  if (event.request.url.includes('generativelanguage.googleapis.com')) {
+  const url = new URL(event.request.url);
+
+  // 1. Skip caching for sensitive AI and dynamic API calls
+  if (url.hostname === 'generativelanguage.googleapis.com' || url.pathname.includes('/api/auth')) {
     return;
   }
 
+  // 2. Navigation fallback for HTML requests
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() => {
+        return caches.match(OFFLINE_URL);
+      })
+    );
+    return;
+  }
+
+  // 3. Stale-While-Revalidate for JS/CSS and Library assets (esm.sh)
   event.respondWith(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.match(event.request).then((cachedResponse) => {
-        const fetchedResponse = fetch(event.request).then((networkResponse) => {
-          // Cache successful responses for future use
+        const fetchPromise = fetch(event.request).then((networkResponse) => {
           if (networkResponse.status === 200) {
             cache.put(event.request, networkResponse.clone());
           }
           return networkResponse;
-        }).catch(() => {
-          // Return cached response if network fails (Offline mode)
-          return cachedResponse;
-        });
+        }).catch(() => cachedResponse);
 
-        return cachedResponse || fetchedResponse;
+        return cachedResponse || fetchPromise;
       });
     })
   );
+});
+
+// Handle update command from UI
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
