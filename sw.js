@@ -44,8 +44,6 @@ async function cacheWithMetadata(cache, request, response) {
   const headers = new Headers(clonedResponse.headers);
   headers.set('X-Cache-Timestamp', Date.now().toString());
   
-  // Note: Synthesizing a new response to include metadata headers
-  // This is useful for diagnostics but consumes slightly more memory during the write
   try {
     const blob = await clonedResponse.blob();
     const metaResponse = new Response(blob, {
@@ -55,7 +53,7 @@ async function cacheWithMetadata(cache, request, response) {
     });
     await cache.put(request, metaResponse);
   } catch (err) {
-    // Fallback to standard cache if synthesis fails (e.g. opaque responses)
+    // Fallback if blob construction fails
     await cache.put(request, response.clone());
   }
 }
@@ -65,42 +63,54 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
-  // 1. DYNAMIC DATA: Always Fresh (Network-First/Only)
-  const isAiRoute = url.pathname.includes('/api/insights') || 
+  // 1. DYNAMIC / SENSITIVE / ACTION-BASED: Network Only
+  // Exclude AI generation, Auth, and specific action-oriented API endpoints.
+  const isDynamic = url.pathname.includes('/api/insights') || 
                     url.pathname.includes('/api/recommend-kpis') || 
-                    url.pathname.includes('/api/generate-dashboard');
-  const isAuthRoute = url.pathname.includes('/api/auth');
+                    url.pathname.includes('/api/generate-dashboard') ||
+                    url.pathname.includes('/api/auth');
 
-  if (url.hostname === 'generativelanguage.googleapis.com' || isAiRoute || isAuthRoute) {
+  if (url.hostname === 'generativelanguage.googleapis.com' || isDynamic) {
     event.respondWith(fetch(event.request));
     return;
   }
 
-  // 2. NAVIGATION: Cache with Offline Fallback
+  // 2. NAVIGATION: Network First -> Cache -> Offline Fallback
+  // If the user navigates to a page, try network first. 
+  // If offline, serve the cached page. If strictly offline and no cache, serve offline.html.
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).then(async (networkResponse) => {
-        const cache = await caches.open(CACHE_NAME);
-        cacheWithMetadata(cache, event.request, networkResponse);
-        return networkResponse;
-      }).catch(async () => {
-        const cache = await caches.open(CACHE_NAME);
-        const cachedResponse = await cache.match(event.request);
-        return cachedResponse || cache.match(OFFLINE_URL);
-      })
+      fetch(event.request)
+        .then(async (networkResponse) => {
+          const cache = await caches.open(CACHE_NAME);
+          // Update cache with fresh page
+          cacheWithMetadata(cache, event.request, networkResponse.clone());
+          return networkResponse;
+        })
+        .catch(async () => {
+          const cache = await caches.open(CACHE_NAME);
+          const cachedResponse = await cache.match(event.request);
+          // Fallback to offline page if navigation fails and page not cached
+          return cachedResponse || cache.match(OFFLINE_URL);
+        })
     );
     return;
   }
 
-  // 3. STATIC & LIBRARIES: Stale-While-Revalidate
+  // 3. STATIC ASSETS & READ-HEAVY DATA: Stale-While-Revalidate
+  // This covers JS, CSS, Images, and potential GET API requests for user profiles/dept info.
+  // We serve from cache immediately for speed, then update in background.
   event.respondWith(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.match(event.request).then((cachedResponse) => {
         const fetchPromise = fetch(event.request).then((networkResponse) => {
-          if (networkResponse.status === 200) {
+          if (networkResponse.ok) {
             cacheWithMetadata(cache, event.request, networkResponse);
           }
           return networkResponse;
+        }).catch((err) => {
+            // Network failure in background is acceptable for SWR; content remains stale but visible.
+            console.debug('Background fetch failed for', event.request.url);
         });
 
         return cachedResponse || fetchPromise;

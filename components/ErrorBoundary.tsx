@@ -1,4 +1,3 @@
-
 import React, { ErrorInfo, ReactNode } from 'react';
 
 interface Props {
@@ -14,8 +13,9 @@ interface State {
  * Robust ErrorBoundary implementation.
  * Ensures properties like 'props' and 'state' are correctly typed and recognized by extending React.Component.
  */
-// Fix: Use React.Component explicitly to resolve inheritance typing issues and ensure this.props and this.state are properly defined.
 export class ErrorBoundary extends React.Component<Props, State> {
+  public state: State;
+
   constructor(props: Props) {
     super(props);
     this.state = {

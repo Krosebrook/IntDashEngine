@@ -82,10 +82,14 @@ const App: React.FC = () => {
 
     // PWA: Install Prompt Detection
     const handleInstallPrompt = (e: any) => {
+      // Prevent the mini-infobar from appearing on mobile
       e.preventDefault();
+      // Stash the event so it can be triggered later.
       setInstallPrompt(e);
+      // Show the customized install prompt
       setShowInstallBanner(true);
     };
+
     window.addEventListener('beforeinstallprompt', handleInstallPrompt);
 
     return () => {
@@ -136,15 +140,16 @@ const App: React.FC = () => {
     }
   };
 
-  const handleInstallClick = async () => {
+  const handleInstallClick = () => {
     if (!installPrompt) return;
     installPrompt.prompt();
-    const { outcome } = await installPrompt.userChoice;
-    if (outcome === 'accepted') {
-      console.log('User accepted install');
-    }
-    setInstallPrompt(null);
-    setShowInstallBanner(false);
+    installPrompt.userChoice.then((choiceResult: any) => {
+      if (choiceResult.outcome === 'accepted') {
+        console.log('User accepted install');
+      }
+      setInstallPrompt(null);
+      setShowInstallBanner(false);
+    });
   };
 
   const updateKPI = async (deptId: string, updatedKPI: KPI) => {
@@ -239,29 +244,25 @@ const App: React.FC = () => {
 
       {/* PWA Install Banner */}
       {showInstallBanner && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-4 px-5 py-3 bg-slate-900/90 backdrop-blur-md border border-slate-700 rounded-full shadow-2xl animate-in slide-in-from-top-10">
-          <div className="flex items-center gap-3">
-            <span className="flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-blue-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-            </span>
-            <span className="text-xs font-bold text-white">Install App</span>
+        <div className="fixed bottom-6 left-6 z-[200] bg-slate-900 border border-slate-700 p-4 rounded-xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-10 max-w-sm">
+          <div className="flex-1">
+            <h4 className="font-bold text-white text-sm">Install App</h4>
+            <p className="text-xs text-slate-400 mt-1">Add to home screen for offline access.</p>
           </div>
-          <div className="h-4 w-px bg-slate-700"></div>
-          <button 
-            onClick={handleInstallClick}
-            className="text-xs font-bold text-blue-400 hover:text-blue-300 transition-colors"
-          >
-            Install
-          </button>
-          <button 
-            onClick={() => setShowInstallBanner(false)}
-            className="text-slate-500 hover:text-white transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setShowInstallBanner(false)} 
+              className="px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-white transition-colors"
+            >
+              Dismiss
+            </button>
+            <button 
+              onClick={handleInstallClick}
+              className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-colors shadow-lg shadow-blue-600/20"
+            >
+              Install
+            </button>
+          </div>
         </div>
       )}
 
