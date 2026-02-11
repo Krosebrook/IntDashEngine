@@ -1,135 +1,62 @@
 
-import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { AIInsight, DepartmentConfig, DepartmentCategory } from "../types";
+import { AIInsight, DepartmentConfig, KPIRecommendation, KPI } from "../types";
 import { db } from "../lib/db";
+import { apiClient } from "./apiClient";
 
-// Always use process.env.API_KEY directly for initialization as per guidelines
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+/**
+ * Refactored to use the apiClient.
+ * This service communicates with our simulated /api/ backend via the apiClient
+ * which avoids global window.fetch monkey-patching.
+ */
 
-// Create a deterministic hash of the department state
 const generateHash = (dept: DepartmentConfig): string => {
   const coreData = dept.kpis.map(k => `${k.id}:${k.value}:${k.target}`).join('|');
   return `${dept.id}-${coreData}`;
 };
 
 export async function getAIInsights(dept: DepartmentConfig): Promise<AIInsight[]> {
-  // Defensive check for empty data
   if (!dept || !dept.kpis || dept.kpis.length === 0) {
     return getDefaultInsights(dept);
   }
 
-  // 1. Check Cache
+  // L1 Cache: Browser (IndexedDB)
   const hash = generateHash(dept);
   const cached = await db.getInsight(hash);
   if (cached) {
-    console.log(`[AI Cache Hit] Returning cached insights for ${dept.name}`);
     return cached;
   }
 
-  const prompt = `
-    As an expert business analyst, analyze the current performance of the ${dept.name} department at INT Inc.
-    Current KPIs: ${dept.kpis.map(k => `${k.label}: ${k.value}${k.unit} (Target: ${k.target}${k.unit})`).join(', ')}.
-    
-    Provide 3 strategic insights for this department. 
-    Focus on efficiency gains, risk mitigation, and growth opportunities.
-  `;
-
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              description: { type: Type.STRING },
-              priority: { type: Type.STRING, enum: ['low', 'medium', 'high', 'critical'] },
-              impact: { type: Type.STRING }
-            },
-            required: ['title', 'description', 'priority', 'impact']
-          }
-        }
-      }
-    });
-
-    const text = response.text;
-    if (!text) return getDefaultInsights(dept);
-    
-    const insights = JSON.parse(text);
-    
-    // 2. Save to Cache
+    const response = await apiClient.post('/api/insights', dept);
+    if (!response.ok) throw new Error('Proxy error');
+    const insights = await response.json();
     await db.saveInsight(hash, insights);
-    
     return insights;
   } catch (error) {
-    console.error("Gemini Error:", error);
+    console.error("AI Proxy Request Failed:", error);
     return getDefaultInsights(dept);
   }
 }
 
-export async function generateDashboardFromInput(inputText: string): Promise<DepartmentConfig | null> {
-  const prompt = `
-    Analyze the following unstructured document text and extract a structured Dashboard Configuration for a corporate department.
-    
-    DOCUMENT TEXT:
-    "${inputText.substring(0, 30000)}" 
-    
-    REQUIREMENTS:
-    1. Infer the Department Name and Category (Service Delivery, Support, or Executive).
-    2. Extract up to 6 Key Performance Indicators (KPIs).
-    3. For each KPI, infer a current value, a unit (%, $, #, etc), a target value, and a status based on the context.
-    4. Return a JSON object matching the DepartmentConfig structure.
-  `;
-
-  const kpiSchema: Schema = {
-    type: Type.OBJECT,
-    properties: {
-      id: { type: Type.STRING },
-      label: { type: Type.STRING },
-      description: { type: Type.STRING },
-      value: { type: Type.NUMBER },
-      unit: { type: Type.STRING },
-      target: { type: Type.NUMBER },
-      trend: { type: Type.STRING, enum: ['up', 'down', 'flat'] },
-      change: { type: Type.NUMBER },
-      status: { type: Type.STRING, enum: ['on-track', 'at-risk', 'critical'] }
-    },
-    required: ['id', 'label', 'value', 'unit', 'target', 'status']
-  };
-
+export async function getKPIRecommendations(kpi: KPI, departmentName: string): Promise<KPIRecommendation[]> {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash", // Using 2.5 Flash for fast document processing
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            id: { type: Type.STRING },
-            name: { type: Type.STRING },
-            category: { type: Type.STRING, enum: Object.values(DepartmentCategory) },
-            description: { type: Type.STRING },
-            kpis: {
-              type: Type.ARRAY,
-              items: kpiSchema
-            }
-          },
-          required: ['id', 'name', 'category', 'kpis']
-        }
-      }
-    });
-
-    const text = response.text;
-    if (!text) return null;
-    return JSON.parse(text);
+    const response = await apiClient.post('/api/recommend-kpis', { kpi, departmentName });
+    if (!response.ok) throw new Error('Recommendation proxy error');
+    return await response.json();
   } catch (error) {
-    console.error("Dashboard Generation Error:", error);
-    throw new Error("Failed to generate dashboard from document.");
+    console.error("KPI Recommendation Failed:", error);
+    return [];
+  }
+}
+
+export async function generateDashboardFromInput(inputText: string): Promise<DepartmentConfig | null> {
+  try {
+    const response = await apiClient.post('/api/generate-dashboard', { text: inputText });
+    if (!response.ok) throw new Error('Generation Proxy error');
+    return await response.json();
+  } catch (error) {
+    console.error("Dashboard Generation Proxy Failed:", error);
+    return null;
   }
 }
 

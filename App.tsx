@@ -99,10 +99,6 @@ const App: React.FC = () => {
             }
             return kpi;
           });
-          
-          // Persist live updates to DB periodically? 
-          // For now, let's only persist manual edits to avoid thrashing DB on high freq updates.
-          
           return { ...prev, [deptId]: updatedList };
         });
       };
@@ -140,10 +136,18 @@ const App: React.FC = () => {
     setLocalKPIs(prev => {
       const deptKPIs = prev[deptId] || departments.find(d => d.id === deptId)?.kpis || [];
       const newList = deptKPIs.map(k => k.id === updatedKPI.id ? updatedKPI : k);
-      
-      // Async persist to DB
       db.saveKPIs(deptId, newList).catch(console.error);
-      
+      return { ...prev, [deptId]: newList };
+    });
+  };
+
+  const handleAddKPI = async (deptId: string, newKPI: KPI) => {
+    setLocalKPIs(prev => {
+      const deptKPIs = prev[deptId] || departments.find(d => d.id === deptId)?.kpis || [];
+      // Prevent duplicates
+      if (deptKPIs.some(k => k.label === newKPI.label)) return prev;
+      const newList = [...deptKPIs, newKPI];
+      db.saveKPIs(deptId, newList).catch(console.error);
       return { ...prev, [deptId]: newList };
     });
   };
@@ -164,7 +168,6 @@ const App: React.FC = () => {
 
   const displayedKPIs = getFilteredAndSortedKPIs();
   
-  // Merge local state into currentDept for AI Insights and Comparison props
   const effectiveDept = { 
     ...currentDept, 
     kpis: localKPIs[currentDept.id] || currentDept.kpis 
@@ -235,7 +238,14 @@ const App: React.FC = () => {
             <div className={`animate-in fade-in slide-in-from-bottom-4 duration-500 ${isRefreshing ? 'opacity-50' : ''}`}>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
                 {displayedKPIs.map(kpi => (
-                  <KPICard key={kpi.id} kpi={kpi} currentUser={currentUser} onUpdate={u => updateKPI(currentDept.id, u)} />
+                  <KPICard 
+                    key={kpi.id} 
+                    kpi={kpi} 
+                    currentUser={currentUser} 
+                    departmentName={currentDept.name} 
+                    onUpdate={u => updateKPI(currentDept.id, u)}
+                    onAddKPI={nk => handleAddKPI(currentDept.id, nk)}
+                  />
                 ))}
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

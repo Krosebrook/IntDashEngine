@@ -1,17 +1,20 @@
 
 import React, { useState, useRef, useMemo } from 'react';
-import { KPI, User } from '../types';
+import { KPI, User, KPIRecommendation } from '../types';
 import { Permissions } from '../lib/permissions';
 import { safeParseFloat, generateStableHistoryData } from '../lib/utils';
 import KPIEditorModal from './Editor/KPIEditorModal';
 import { toPng, toSvg } from 'html-to-image';
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 import SimpleLineChart from './charts/SimpleLineChart';
+import { getKPIRecommendations } from '../services/geminiService';
 
 interface Props {
   kpi: KPI;
   currentUser: User | null;
+  departmentName?: string;
   onUpdate?: (updated: KPI) => void;
+  onAddKPI?: (newKPI: KPI) => void;
   isSelectMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: () => void;
@@ -20,7 +23,9 @@ interface Props {
 const KPICard: React.FC<Props> = ({ 
   kpi, 
   currentUser, 
-  onUpdate, 
+  departmentName = "Department",
+  onUpdate,
+  onAddKPI,
   isSelectMode = false, 
   isSelected = false, 
   onToggleSelect 
@@ -28,6 +33,10 @@ const KPICard: React.FC<Props> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showRecommendations, setShowRecommendations] = useState(false);
+  const [recommendations, setRecommendations] = useState<KPIRecommendation[]>([]);
+  const [loadingRecs, setLoadingRecs] = useState(false);
+  
   const cardRef = useRef<HTMLDivElement>(null);
   const isPositive = kpi.trend === 'up';
   const canEdit = Permissions.canEditKPI(currentUser);
@@ -44,29 +53,56 @@ const KPICard: React.FC<Props> = ({
     'critical': 'from-rose-500 to-rose-700'
   };
 
-  // Generate deterministic data for visualization so it doesn't jitter on re-renders
   const historyData = useMemo(() => {
     return generateStableHistoryData(kpi.id, kpi.value, kpi.target);
   }, [kpi.id, kpi.value, kpi.target]);
 
   const sparklineData = useMemo(() => historyData.slice(-7), [historyData]);
 
-  // Calculate progress percentage safely
   const progressPercent = useMemo(() => {
     const val = safeParseFloat(kpi.value);
     if (kpi.target === 0) return 0;
     return Math.min(Math.max((val / kpi.target) * 100, 0), 100);
   }, [kpi.value, kpi.target]);
 
-  const escapeCSV = (str: string) => {
-    if (!str) return '""';
-    return `"${str.replace(/"/g, '""')}"`;
+  const handleRecsToggle = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!showRecommendations && recommendations.length === 0) {
+      setLoadingRecs(true);
+      setShowRecommendations(true);
+      const data = await getKPIRecommendations(kpi, departmentName);
+      setRecommendations(data);
+      setLoadingRecs(false);
+    } else {
+      setShowRecommendations(!showRecommendations);
+    }
+  };
+
+  const handleAddRecommended = (rec: KPIRecommendation) => {
+    if (!onAddKPI) return;
+    
+    const newKPI: KPI = {
+      id: `rec-${Math.random().toString(36).substr(2, 6)}`,
+      label: rec.label,
+      description: `${rec.description} | ${rec.reasoning}`,
+      value: 0, // Initial value
+      unit: rec.unit,
+      target: rec.suggestedTarget,
+      trend: 'flat',
+      change: 0,
+      status: 'on-track'
+    };
+    
+    onAddKPI(newKPI);
+    // Remove from recommendations list so it's not added twice
+    setRecommendations(prev => prev.filter(r => r.label !== rec.label));
+    if (recommendations.length <= 1) setShowRecommendations(false);
   };
 
   const handleExportCSV = (e: React.MouseEvent) => {
     e.stopPropagation();
     const headers = "ID,Label,Description,Value,Unit,Target,Status,Trend,Change\n";
-    const row = `${kpi.id},${escapeCSV(kpi.label)},${escapeCSV(kpi.description || '')},${kpi.value},${kpi.unit},${kpi.target},${kpi.status},${kpi.trend},${kpi.change}\n`;
+    const row = `${kpi.id},"${kpi.label}","${kpi.description || ''}",${kpi.value},${kpi.unit},${kpi.target},${kpi.status},${kpi.trend},${kpi.change}\n`;
     const csvContent = "data:text/csv;charset=utf-8," + headers + row;
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -80,19 +116,11 @@ const KPICard: React.FC<Props> = ({
   const handleExportImage = async (e: React.MouseEvent, type: 'png' | 'svg') => {
     e.stopPropagation();
     if (!cardRef.current) return;
-
-    const filter = (node: HTMLElement) => {
-      return !node.classList?.contains('export-controls') && 
-             !node.classList?.contains('edit-btn') &&
-             !node.classList?.contains('history-btn') &&
-             !node.classList?.contains('selection-overlay');
-    };
-
+    const filter = (node: HTMLElement) => !node.classList?.contains('export-controls') && !node.classList?.contains('action-btn');
     try {
       const dataUrl = type === 'png' 
         ? await toPng(cardRef.current, { filter, backgroundColor: '#0f172a' }) 
         : await toSvg(cardRef.current, { filter, backgroundColor: '#0f172a' });
-      
       const link = document.createElement('a');
       link.download = `${kpi.id}.${type}`;
       link.href = dataUrl;
@@ -102,118 +130,116 @@ const KPICard: React.FC<Props> = ({
     }
   };
 
-  // Keyboard accessibility handler
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (isSelectMode && (e.key === 'Enter' || e.key === ' ')) {
-      e.preventDefault();
-      onToggleSelect?.();
-    }
-  };
-
   return (
     <>
       <div 
         ref={cardRef}
-        tabIndex={0}
-        onKeyDown={handleKeyDown}
-        aria-label={`${kpi.label}: ${kpi.value}${kpi.unit}. Status: ${kpi.status}. Trend: ${kpi.trend} by ${Math.abs(kpi.change)}%.`}
-        className={`group relative p-5 rounded-xl border transition-all duration-300 h-40 flex flex-col justify-between focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 focus:ring-blue-500
+        className={`group relative p-5 rounded-xl border transition-all duration-300 h-40 flex flex-col justify-between focus:outline-none focus:ring-2 focus:ring-blue-500
           ${isSelectMode 
             ? isSelected 
-              ? 'bg-blue-600/20 border-blue-500 ring-2 ring-blue-500 shadow-lg shadow-blue-500/20 scale-[1.02]' 
-              : `bg-slate-800/40 border-slate-700/50 hover:bg-slate-800/60 hover:border-slate-500 opacity-90 hover:opacity-100 cursor-pointer`
+              ? 'bg-blue-600/20 border-blue-500 ring-2 ring-blue-500 shadow-lg' 
+              : 'bg-slate-800/40 border-slate-700/50 hover:bg-slate-800/60'
             : `${statusColors[kpi.status]} bg-slate-800/50 hover:scale-[1.02]`
           } 
           ${isSelectMode ? 'cursor-pointer' : ''}`}
         onClick={() => isSelectMode && onToggleSelect?.()}
         role={isSelectMode ? "checkbox" : "article"}
-        aria-checked={isSelectMode ? isSelected : undefined}
       >
-        {isSelectMode ? (
-          <div className="selection-overlay absolute inset-0 z-10 flex items-start justify-end p-3 pointer-events-none">
-            <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all duration-200 ${isSelected ? 'bg-blue-500 border-blue-500 shadow-lg scale-110' : 'border-slate-500 bg-slate-900/80 group-hover:border-slate-300'}`}>
-              {isSelected && <svg className="w-4 h-4 text-white font-bold" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+        <div className="absolute top-2 right-2 flex gap-1 z-20">
+          {/* Smart Suggestion Lightbulb */}
+          {!isSelectMode && (
+            <button
+              onClick={handleRecsToggle}
+              className={`action-btn p-1.5 rounded-lg border transition-all backdrop-blur-sm opacity-0 group-hover:opacity-100 focus:opacity-100 ${
+                showRecommendations ? 'bg-amber-500 text-slate-900 border-amber-400 scale-110 shadow-lg shadow-amber-500/20' : 'bg-slate-800 text-amber-500 border-slate-700 hover:border-amber-500/50'
+              }`}
+              title="Metric Advisor"
+            >
+              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 11-2 0 1 1 0 012 0zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.477.859h4z" />
+              </svg>
+            </button>
+          )}
+
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowHistory(true); }}
+            className="action-btn p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg border border-slate-700 opacity-0 group-hover:opacity-100"
+            title="View History"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
+
+          {canEdit && !isSelectMode && (
+            <button 
+              onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
+              className="action-btn p-1.5 bg-slate-800 hover:bg-blue-600 text-slate-400 hover:text-white rounded-lg border border-slate-700 opacity-0 group-hover:opacity-100"
+              title="Edit KPI"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {/* Metric Advisor Popover */}
+        {showRecommendations && (
+          <div className="absolute top-10 right-2 w-64 bg-slate-900 border border-amber-500/30 rounded-xl shadow-2xl z-[60] p-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-[10px] font-black uppercase text-amber-500 tracking-wider">Metric Advisor</span>
+              <button onClick={(e) => { e.stopPropagation(); setShowRecommendations(false); }} className="text-slate-500 hover:text-white">✕</button>
             </div>
-            {isSelected && (
-              <div className="absolute inset-0 bg-blue-500/5 rounded-xl pointer-events-none animate-in fade-in duration-200" />
+            {loadingRecs ? (
+              <div className="space-y-3 py-2">
+                <div className="h-12 bg-slate-800 rounded-lg animate-pulse" />
+                <div className="h-12 bg-slate-800 rounded-lg animate-pulse" />
+              </div>
+            ) : recommendations.length > 0 ? (
+              <div className="space-y-4">
+                {recommendations.map((rec, i) => (
+                  <div key={i} className="border-l-2 border-amber-500/50 pl-3">
+                    <h5 className="text-xs font-bold text-white mb-1">{rec.label}</h5>
+                    <p className="text-[10px] text-slate-400 leading-relaxed mb-2 line-clamp-2" title={rec.description}>{rec.description}</p>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[9px] text-amber-400/80 italic font-medium">Goal: {rec.suggestedTarget}{rec.unit}</span>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleAddRecommended(rec); }}
+                        className="text-[9px] bg-slate-800 hover:bg-amber-500 hover:text-slate-900 text-slate-300 px-2 py-0.5 rounded transition-colors font-bold uppercase"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[10px] text-slate-500 text-center py-4">No suggestions available.</p>
             )}
           </div>
-        ) : (
-          <>
-            <div className="absolute top-2 right-2 flex gap-1 z-20">
-               {/* History Button */}
-               <button
-                  onClick={(e) => { e.stopPropagation(); setShowHistory(true); }}
-                  className="history-btn p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg border border-slate-700 hover:border-slate-600 transition-all backdrop-blur-sm shadow-sm opacity-0 group-hover:opacity-100 focus:opacity-100"
-                  title="View History"
-                  aria-label={`View history for ${kpi.label}`}
-               >
-                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
-                 </svg>
-               </button>
-
-              {canEdit && (
-                <button 
-                  onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
-                  className="edit-btn p-1.5 bg-slate-800 hover:bg-blue-600 text-slate-400 hover:text-white rounded-lg border border-slate-700 hover:border-blue-500 transition-all backdrop-blur-sm shadow-sm opacity-0 group-hover:opacity-100 focus:opacity-100"
-                  title="Edit KPI"
-                  aria-label={`Edit ${kpi.label}`}
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                  </svg>
-                </button>
-              )}
-            </div>
-            
-            {/* Export Controls */}
-            <div className="export-controls absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 flex gap-1 z-20 bg-slate-900/90 rounded-lg p-0.5 border border-slate-700 shadow-xl transition-all focus-within:opacity-100">
-              <button onClick={handleExportCSV} className="p-1 hover:bg-slate-800 rounded text-[9px] font-bold text-slate-400 hover:text-white uppercase px-1.5 focus:text-white">CSV</button>
-              <div className="w-[1px] bg-slate-700 my-0.5"></div>
-              <button onClick={(e) => handleExportImage(e, 'png')} className="p-1 hover:bg-slate-800 rounded text-[9px] font-bold text-slate-400 hover:text-white uppercase px-1.5 focus:text-white">PNG</button>
-              <button onClick={(e) => handleExportImage(e, 'svg')} className="p-1 hover:bg-slate-800 rounded text-[9px] font-bold text-slate-400 hover:text-white uppercase px-1.5 focus:text-white">SVG</button>
-            </div>
-          </>
         )}
 
         <div className="flex justify-between items-start relative pr-16">
           <div 
-            className="relative group/tooltip"
+            className="relative cursor-help"
             onMouseEnter={() => setShowTooltip(true)}
             onMouseLeave={() => setShowTooltip(false)}
-            onFocus={() => setShowTooltip(true)}
-            onBlur={() => setShowTooltip(false)}
-            tabIndex={0}
-            role="button"
-            aria-expanded={showTooltip}
-            aria-label="Show details"
           >
-            <span className="text-xs font-semibold uppercase tracking-wider opacity-70 cursor-help border-b border-dashed border-slate-600 hover:border-slate-400 transition-colors">
+            <span className="text-xs font-semibold uppercase tracking-wider opacity-70 border-b border-dashed border-slate-600">
               {kpi.label}
             </span>
-            
-            {/* Rich Tooltip with Sparkline */}
             {showTooltip && (
-              <div className="absolute left-0 top-full mt-2 w-72 bg-slate-900 border border-slate-700 p-4 rounded-xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-150 pointer-events-none">
+              <div className="absolute left-0 top-full mt-2 w-72 bg-slate-900 border border-slate-700 p-4 rounded-xl shadow-2xl z-50 pointer-events-none">
                  <div className="text-white text-xs font-bold mb-2 border-b border-slate-800 pb-2 flex justify-between">
                    <span>{kpi.label}</span>
                    <span className="text-[10px] text-slate-500 font-normal">ID: {kpi.id}</span>
                  </div>
-                 <div className="text-slate-400 text-[11px] leading-relaxed mb-3">
-                   {kpi.description || 'No description available for this metric.'}
-                 </div>
+                 <div className="text-slate-400 text-[11px] leading-relaxed mb-3">{kpi.description}</div>
                  <div className="h-16 w-full bg-slate-950/50 rounded-lg border border-slate-800/50 p-1">
-                   <div className="text-[9px] text-slate-500 mb-1 px-1">7 Day Trend</div>
-                   <ResponsiveContainer width="100%" height="70%">
+                   <ResponsiveContainer width="100%" height="100%">
                      <LineChart data={sparklineData}>
-                       <Line 
-                         type="monotone" 
-                         dataKey="value" 
-                         stroke={isPositive ? '#34d399' : '#f43f5e'} 
-                         strokeWidth={2} 
-                         dot={false} 
-                       />
+                       <Line type="monotone" dataKey="value" stroke={isPositive ? '#34d399' : '#f43f5e'} strokeWidth={2} dot={false} />
                        <YAxis domain={['dataMin', 'dataMax']} hide />
                      </LineChart>
                    </ResponsiveContainer>
@@ -221,12 +247,9 @@ const KPICard: React.FC<Props> = ({
               </div>
             )}
           </div>
-
           {!isSelectMode && (
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-              kpi.status === 'on-track' ? 'bg-emerald-500/20' : 
-              kpi.status === 'at-risk' ? 'bg-amber-500/20' : 
-              'bg-rose-500/20'
+              kpi.status === 'on-track' ? 'bg-emerald-500/20' : kpi.status === 'at-risk' ? 'bg-amber-500/20' : 'bg-rose-500/20'
             }`}>
               {kpi.status}
             </span>
@@ -235,52 +258,35 @@ const KPICard: React.FC<Props> = ({
         
         <div className="mt-2">
           <div className="flex items-end justify-between">
-            <h3 className={`text-3xl font-bold transition-colors ${isSelectMode && isSelected ? 'text-blue-200' : 'text-white'}`}>
+            <h3 className="text-3xl font-bold text-white">
               {kpi.value}<span className="text-lg text-slate-400 ml-0.5">{kpi.unit}</span>
             </h3>
-            <div className="flex items-center text-sm font-medium">
-              <span className={isPositive ? 'text-emerald-400' : 'text-rose-400'}>
-                {isPositive ? '▲' : '▼'} {Math.abs(kpi.change)}%
-              </span>
-            </div>
+            <span className={`text-sm font-medium ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {isPositive ? '▲' : '▼'} {Math.abs(kpi.change)}%
+            </span>
           </div>
-          
-          {/* Progress Bar */}
           <div className="w-full h-1.5 bg-slate-700 rounded-full mt-3 overflow-hidden">
             <div 
               className={`h-full rounded-full bg-gradient-to-r ${progressColors[kpi.status]} transition-all duration-1000`} 
               style={{ width: `${progressPercent}%` }}
-              role="progressbar"
-              aria-valuenow={progressPercent}
-              aria-valuemin={0}
-              aria-valuemax={100}
-            ></div>
+            />
           </div>
         </div>
 
         <div className="mt-2 text-[10px] opacity-60 font-medium flex justify-between items-center">
           <span>Target: {kpi.target}{kpi.unit}</span>
-          {isSelectMode && isSelected && <span className="text-blue-400 italic font-bold">Selected</span>}
         </div>
       </div>
 
       {isEditing && (
-        <KPIEditorModal 
-          kpi={kpi} 
-          onClose={() => setIsEditing(false)} 
-          onSave={(updated) => {
-            onUpdate?.(updated);
-            setIsEditing(false);
-          }}
-        />
+        <KPIEditorModal kpi={kpi} onClose={() => setIsEditing(false)} onSave={(u) => { onUpdate?.(u); setIsEditing(false); }} />
       )}
 
       {showHistory && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm" role="dialog" aria-modal="true">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl p-6 relative animate-in fade-in zoom-in-95 duration-200">
-             <button onClick={() => setShowHistory(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white" aria-label="Close history">✕</button>
-             <h3 className="text-xl font-bold text-white mb-1">{kpi.label} History</h3>
-             <p className="text-sm text-slate-400 mb-6">Historical performance over the last 30 days</p>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl p-6 relative">
+             <button onClick={() => setShowHistory(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white">✕</button>
+             <h3 className="text-xl font-bold text-white mb-6">{kpi.label} History</h3>
              <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800">
                 <SimpleLineChart data={historyData} showTarget showTrend color={isPositive ? '#34d399' : '#f43f5e'} />
              </div>

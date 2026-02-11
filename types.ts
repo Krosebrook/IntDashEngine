@@ -17,6 +17,14 @@ export interface KPI {
   status: 'on-track' | 'at-risk' | 'critical';
 }
 
+export interface KPIRecommendation {
+  label: string;
+  description: string;
+  reasoning: string;
+  suggestedTarget: number;
+  unit: string;
+}
+
 export interface ChartData {
   name: string;
   value: number;

@@ -1,4 +1,4 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode } from 'react';
 
 interface Props {
   children?: ReactNode;
@@ -9,11 +9,19 @@ interface State {
   error: Error | null;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
-    hasError: false,
-    error: null
-  };
+/**
+ * Robust ErrorBoundary implementation.
+ * Ensures properties like 'props' and 'state' are correctly typed and recognized by extending React.Component.
+ */
+// Fix: Using React.Component explicitly with a constructor to resolve TypeScript inheritance issues regarding 'props'.
+export class ErrorBoundary extends React.Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null
+    };
+  }
 
   static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
@@ -24,7 +32,8 @@ export class ErrorBoundary extends Component<Props, State> {
     // Integration point for Sentry/LogRocket
   }
 
-  render() {
+  render(): ReactNode {
+    // Access state and props from the React.Component base class
     if (this.state.hasError) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white p-6">
@@ -51,6 +60,7 @@ export class ErrorBoundary extends Component<Props, State> {
       );
     }
 
+    // Correctly accessing this.props as inherited from React.Component
     return this.props.children;
   }
 }
