@@ -45,6 +45,44 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Global Debug Utility for Admins
+(window as any).debugCache = async () => {
+  const keys = await caches.keys();
+  console.group('%c 🛠 PWA Cache Diagnostics Report ', 'background: #1e293b; color: #3b82f6; padding: 4px 10px; border: 1px solid #3b82f6; border-radius: 4px; font-weight: bold;');
+  
+  let totalSize = 0;
+  
+  for (const key of keys) {
+    const cache = await caches.open(key);
+    const requests = await cache.keys();
+    
+    console.log(`%c Store: ${key} (${requests.length} items) `, 'background: #3b82f6; color: #fff; padding: 2px 6px; border-radius: 2px;');
+    
+    const reportData = await Promise.all(requests.map(async r => {
+      const res = await cache.match(r);
+      const blob = await res?.blob();
+      const size = blob?.size || 0;
+      totalSize += size;
+      
+      const ts = res?.headers.get('X-Cache-Timestamp');
+      const date = ts ? new Date(parseInt(ts)) : null;
+      
+      return {
+        URL: r.url.replace(window.location.origin, ''),
+        Size: (size / 1024).toFixed(2) + ' KB',
+        CachedAt: date ? date.toLocaleTimeString() : 'N/A',
+        Status: date ? (Math.floor((Date.now() - date.getTime()) / 60000) < 60 ? 'Fresh' : 'Stale') : 'Unknown'
+      };
+    }));
+    
+    console.table(reportData);
+  }
+  
+  console.log(`%c Total Storage Consumption: ${(totalSize / 1024 / 1024).toFixed(2)} MB `, 'color: #fbbf24; font-weight: bold;');
+  console.groupEnd();
+  return `Finished analyzing ${keys.length} cache stores.`;
+};
+
 const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");

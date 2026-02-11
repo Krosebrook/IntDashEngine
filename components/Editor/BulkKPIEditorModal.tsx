@@ -35,19 +35,11 @@ const BulkKPIEditorModal: React.FC<Props> = ({ count, onSave, onClose }) => {
             </h3>
             <p className="text-xs text-slate-400 pl-4">{count} KPIs selected</p>
           </div>
-          <div className="flex gap-3">
-             <button onClick={onClose} className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors border border-slate-700">
-                Cancel
-             </button>
-             <button 
-                onClick={handleSave}
-                disabled={!hasChanges}
-                className="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg shadow-lg shadow-blue-600/20 transition-all flex items-center gap-2"
-              >
-                Apply Changes
-             </button>
-          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors">
+            ✕
+          </button>
         </div>
+        
         <div className="p-8 space-y-8">
           
           {/* Status Section */}
@@ -124,6 +116,23 @@ const BulkKPIEditorModal: React.FC<Props> = ({ count, onSave, onClose }) => {
                  )}
              </div>
           </div>
+        </div>
+
+        {/* Footer with Actions */}
+        <div className="p-6 bg-slate-800/50 border-t border-slate-800 flex justify-end gap-3">
+            <button 
+                onClick={onClose} 
+                className="px-4 py-2 text-sm font-bold text-slate-400 hover:text-white transition-colors"
+            >
+                Cancel
+            </button>
+            <button 
+                onClick={handleSave}
+                disabled={!hasChanges}
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl shadow-lg shadow-blue-600/20 transition-all flex items-center gap-2"
+            >
+                Apply Changes
+            </button>
         </div>
       </div>
     </div>

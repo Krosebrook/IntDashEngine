@@ -1,3 +1,4 @@
+
 import React, { ErrorInfo, ReactNode } from 'react';
 
 interface Props {
@@ -13,7 +14,7 @@ interface State {
  * Robust ErrorBoundary implementation.
  * Ensures properties like 'props' and 'state' are correctly typed and recognized by extending React.Component.
  */
-// Fix: Using React.Component explicitly with a constructor to resolve TypeScript inheritance issues regarding 'props'.
+// Fix: Use React.Component explicitly to resolve inheritance typing issues and ensure this.props and this.state are properly defined.
 export class ErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
@@ -33,8 +34,11 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   render(): ReactNode {
-    // Access state and props from the React.Component base class
-    if (this.state.hasError) {
+    // Access state and props from the Component base class with destructuring for better type safety
+    const { hasError, error } = this.state;
+    const { children } = this.props;
+
+    if (hasError) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white p-6">
           <div className="max-w-md text-center bg-slate-900 p-8 rounded-2xl border border-slate-800 shadow-2xl">
@@ -50,9 +54,9 @@ export class ErrorBoundary extends React.Component<Props, State> {
             >
               Reload Dashboard
             </button>
-            {this.state.error && (
+            {error && (
               <div className="mt-8 p-4 bg-slate-950 rounded-lg text-left overflow-auto max-h-32 border border-slate-800">
-                <p className="font-mono text-[10px] text-rose-400 break-all">{this.state.error.toString()}</p>
+                <p className="font-mono text-[10px] text-rose-400 break-all">{error.toString()}</p>
               </div>
             )}
           </div>
@@ -60,7 +64,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    // Correctly accessing this.props as inherited from React.Component
-    return this.props.children;
+    // Correctly accessing children via destructured props
+    return children;
   }
 }

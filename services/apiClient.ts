@@ -10,6 +10,10 @@ export const apiClient = {
   async post(url: string, body: any): Promise<Response> {
     console.log(`[API Client] Routing request to: ${url}`);
     
+    // Simulate network latency (400-800ms) to ensure UI loading states are visible
+    // and to mimic the behavior of a real backend proxy connection.
+    await new Promise(resolve => setTimeout(resolve, 400 + Math.random() * 400));
+
     try {
       if (url === '/api/insights') {
         const data = await handleInsightsRequest(body);

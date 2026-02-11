@@ -11,12 +11,15 @@ import AIInsightsView from './components/AIInsightsView';
 import SimpleLineChart from './components/charts/SimpleLineChart';
 import DepartmentComparison from './components/DepartmentComparison';
 import DashboardGeneratorModal from './components/DashboardGeneratorModal';
+import BulkKPIEditorModal from './components/Editor/BulkKPIEditorModal';
 import OnboardingConcierge from './components/Onboarding/OnboardingConcierge';
 import AuthView from './components/AuthView';
 import FeedbackModal from './components/FeedbackModal';
 import UserManagement from './components/Admin/UserManagement';
+import CacheDiagnostics from './components/Admin/CacheDiagnostics';
 
 type ViewMode = 'dashboard' | 'management' | 'settings';
+type ManagementTab = 'users' | 'system';
 type FilterStatus = 'all' | 'on-track' | 'at-risk' | 'critical';
 type SortOption = 'name' | 'value' | 'change';
 
@@ -26,6 +29,7 @@ const App: React.FC = () => {
   const [currentDept, setCurrentDept] = useState<DepartmentConfig>(INITIAL_DEPARTMENTS[INITIAL_DEPARTMENTS.length - 1]);
   const [localKPIs, setLocalKPIs] = useState<Record<string, KPI[]>>({});
   const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
+  const [managementTab, setManagementTab] = useState<ManagementTab>('users');
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isGeneratorOpen, setIsGeneratorOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
@@ -34,6 +38,11 @@ const App: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [sortBy, setSortBy] = useState<SortOption>('name');
   
+  // Bulk Edit State
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedKPIs, setSelectedKPIs] = useState<Set<string>>(new Set());
+  const [isBulkEditorOpen, setIsBulkEditorOpen] = useState(false);
+
   // PWA Specific States
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
@@ -84,6 +93,12 @@ const App: React.FC = () => {
       window.removeEventListener('beforeinstallprompt', handleInstallPrompt);
     };
   }, []);
+
+  useEffect(() => {
+    // Clear selection when changing departments
+    setSelectedKPIs(new Set());
+    setIsSelectMode(false);
+  }, [currentDept.id]);
 
   useEffect(() => {
     if (isLiveMode) {
@@ -152,6 +167,42 @@ const App: React.FC = () => {
     });
   };
 
+  const toggleSelection = (kpiId: string) => {
+    setSelectedKPIs(prev => {
+      const next = new Set(prev);
+      if (next.has(kpiId)) next.delete(kpiId);
+      else next.add(kpiId);
+      return next;
+    });
+  };
+
+  const handleBulkSave = async (changes: { status?: 'on-track' | 'at-risk' | 'critical', targetMultiplier?: number }) => {
+    const deptId = currentDept.id;
+    
+    setLocalKPIs(prev => {
+      const currentList = prev[deptId] || departments.find(d => d.id === deptId)?.kpis || [];
+      const updatedList = currentList.map(kpi => {
+        if (selectedKPIs.has(kpi.id)) {
+          let updates: Partial<KPI> = {};
+          if (changes.status) updates.status = changes.status;
+          if (changes.targetMultiplier !== undefined) {
+             updates.target = Number((kpi.target * changes.targetMultiplier).toFixed(2));
+          }
+          return { ...kpi, ...updates };
+        }
+        return kpi;
+      });
+
+      // Side effect: Save to DB
+      db.saveKPIs(deptId, updatedList).catch(console.error);
+      return { ...prev, [deptId]: updatedList };
+    });
+
+    setIsBulkEditorOpen(false);
+    setIsSelectMode(false);
+    setSelectedKPIs(new Set());
+  };
+
   const getFilteredAndSortedKPIs = () => {
     const rawKPIs = localKPIs[currentDept.id] || currentDept.kpis;
     let filtered = rawKPIs;
@@ -173,6 +224,8 @@ const App: React.FC = () => {
     kpis: localKPIs[currentDept.id] || currentDept.kpis 
   };
 
+  const isAdmin = Permissions.canManageUsers(currentUser);
+
   return (
     <div className="flex h-screen bg-slate-950 overflow-hidden font-sans">
       {/* PWA Update Banner */}
@@ -186,16 +239,29 @@ const App: React.FC = () => {
 
       {/* PWA Install Banner */}
       {showInstallBanner && (
-        <div className="fixed top-20 right-6 z-[200] bg-slate-900 border border-slate-700 text-white p-4 rounded-2xl shadow-2xl flex flex-col gap-3 animate-in slide-in-from-top-10 max-w-[280px]">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-4 px-5 py-3 bg-slate-900/90 backdrop-blur-md border border-slate-700 rounded-full shadow-2xl animate-in slide-in-from-top-10">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-xs">INT</div>
-            <div className="text-xs font-bold">Install Dashboard Engine</div>
+            <span className="flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-blue-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+            </span>
+            <span className="text-xs font-bold text-white">Install App</span>
           </div>
-          <p className="text-[10px] text-slate-400">Add to home screen for real-time monitoring and full-screen experience.</p>
-          <div className="flex gap-2">
-            <button onClick={handleInstallClick} className="flex-1 py-2 bg-blue-600 text-white text-[10px] font-bold rounded-lg">Install</button>
-            <button onClick={() => setShowInstallBanner(false)} className="px-3 py-2 text-slate-500 text-[10px]">Later</button>
-          </div>
+          <div className="h-4 w-px bg-slate-700"></div>
+          <button 
+            onClick={handleInstallClick}
+            className="text-xs font-bold text-blue-400 hover:text-blue-300 transition-colors"
+          >
+            Install
+          </button>
+          <button 
+            onClick={() => setShowInstallBanner(false)}
+            className="text-slate-500 hover:text-white transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
       )}
 
@@ -203,26 +269,68 @@ const App: React.FC = () => {
       {isGeneratorOpen && <DashboardGeneratorModal onClose={() => setIsGeneratorOpen(false)} onGenerate={newDept => { setDepartments(prev => [...prev, newDept]); setCurrentDept(newDept); }} />}
       {isOnboardingOpen && <OnboardingConcierge onComplete={() => { localStorage.setItem('int_onboarding_done', 'true'); setIsOnboardingOpen(false); }} onClose={() => setIsOnboardingOpen(false)} />}
       
+      {isBulkEditorOpen && (
+        <BulkKPIEditorModal 
+          count={selectedKPIs.size} 
+          onSave={handleBulkSave} 
+          onClose={() => setIsBulkEditorOpen(false)} 
+        />
+      )}
+
       <aside className="hidden lg:flex flex-col w-64 border-r border-slate-800 bg-slate-900/50 backdrop-blur-xl">
         <div className="p-6 border-b border-slate-800 flex items-center gap-3">
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white">INT</div>
           <h1 className="font-bold text-lg text-white">Engine</h1>
         </div>
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          <button onClick={() => setViewMode('dashboard')} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-3 mb-6 ${viewMode === 'dashboard' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>Dashboard</button>
-          {Permissions.canManageUsers(currentUser) && (
-            <button onClick={() => setViewMode('management')} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-3 mb-6 ${viewMode === 'management' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>Access Control</button>
+          <button onClick={() => setViewMode('dashboard')} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-3 mb-4 ${viewMode === 'dashboard' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>Dashboard</button>
+          
+          {isAdmin && (
+            <button onClick={() => setViewMode('management')} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-3 mb-6 ${viewMode === 'management' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>Admin Portal</button>
           )}
-          {departments.map(dept => (
-            <button key={dept.id} onClick={() => setCurrentDept(dept)} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all ${currentDept.id === dept.id ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>{dept.name}</button>
-          ))}
+
+          <div className="pt-4 border-t border-slate-800/50 mt-4 space-y-1">
+            <div className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500">Departments</div>
+            {departments.map(dept => (
+              <button key={dept.id} onClick={() => { setCurrentDept(dept); setViewMode('dashboard'); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all ${currentDept.id === dept.id && viewMode === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-800'}`}>{dept.name}</button>
+            ))}
+          </div>
         </nav>
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-slate-950 relative">
         <header className="sticky top-0 z-40 flex items-center justify-between p-4 bg-slate-950/80 backdrop-blur-md border-b border-slate-800/50">
-          <h2 className="text-xl font-bold text-white">{viewMode === 'dashboard' ? currentDept.name : 'Management'}</h2>
           <div className="flex items-center gap-4">
+            <h2 className="text-xl font-bold text-white">{viewMode === 'dashboard' ? currentDept.name : 'Admin Portal'}</h2>
+            {viewMode === 'management' && (
+              <div className="flex items-center gap-1 bg-slate-900 rounded-lg p-1 border border-slate-800">
+                <button 
+                  onClick={() => setManagementTab('users')}
+                  className={`px-3 py-1 text-[10px] font-bold uppercase rounded-md transition-all ${managementTab === 'users' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                >
+                  Users
+                </button>
+                <button 
+                  onClick={() => setManagementTab('system')}
+                  className={`px-3 py-1 text-[10px] font-bold uppercase rounded-md transition-all ${managementTab === 'system' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                >
+                  System
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-4">
+             {Permissions.canEditKPI(currentUser) && viewMode === 'dashboard' && (
+              <button 
+                 onClick={() => { 
+                    setIsSelectMode(!isSelectMode); 
+                    if (isSelectMode) setSelectedKPIs(new Set()); 
+                 }}
+                 className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-all ${isSelectMode ? 'bg-blue-600/20 text-blue-400 border-blue-500/50' : 'text-slate-400 border-slate-800 hover:bg-slate-900'}`}
+              >
+                {isSelectMode ? 'Cancel Selection' : 'Bulk Edit'}
+              </button>
+            )}
             <div className="flex items-center gap-2 bg-slate-900 rounded-lg p-1 border border-slate-800">
               <span className={`text-[10px] font-bold uppercase px-2 ${isLiveMode ? 'text-emerald-400' : 'text-slate-500'}`}>Live</span>
               <button onClick={() => setIsLiveMode(!isLiveMode)} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isLiveMode ? 'bg-emerald-500' : 'bg-slate-700'}`}>
@@ -233,7 +341,7 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        <div className="p-6 max-w-7xl mx-auto w-full space-y-6">
+        <div className="p-6 max-w-7xl mx-auto w-full space-y-6 pb-24">
           {viewMode === 'dashboard' ? (
             <div className={`animate-in fade-in slide-in-from-bottom-4 duration-500 ${isRefreshing ? 'opacity-50' : ''}`}>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
@@ -243,8 +351,12 @@ const App: React.FC = () => {
                     kpi={kpi} 
                     currentUser={currentUser} 
                     departmentName={currentDept.name} 
+                    departmentDescription={currentDept.description}
                     onUpdate={u => updateKPI(currentDept.id, u)}
                     onAddKPI={nk => handleAddKPI(currentDept.id, nk)}
+                    isSelectMode={isSelectMode}
+                    isSelected={selectedKPIs.has(kpi.id)}
+                    onToggleSelect={() => toggleSelection(kpi.id)}
                   />
                 ))}
               </div>
@@ -267,8 +379,32 @@ const App: React.FC = () => {
                 </div>
               </div>
             </div>
-          ) : <UserManagement currentUser={currentUser} />}
+          ) : (
+            managementTab === 'users' ? <UserManagement currentUser={currentUser} /> : <CacheDiagnostics />
+          )}
         </div>
+        
+        {/* Floating Bulk Action Bar */}
+        {isSelectMode && selectedKPIs.size > 0 && (
+           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-slate-700 p-2 pr-3 rounded-xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-4">
+              <div className="flex items-center gap-2 px-3 py-1 bg-slate-800 rounded-lg">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                  <span className="text-xs font-bold text-white">{selectedKPIs.size} selected</span>
+              </div>
+              <button 
+                onClick={() => setIsBulkEditorOpen(true)} 
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-colors shadow-lg shadow-blue-600/20"
+              >
+                Edit Selected
+              </button>
+              <button 
+                onClick={() => setSelectedKPIs(new Set())}
+                className="p-2 text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+           </div>
+        )}
       </main>
     </div>
   );

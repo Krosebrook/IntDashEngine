@@ -38,9 +38,9 @@ export async function getAIInsights(dept: DepartmentConfig): Promise<AIInsight[]
   }
 }
 
-export async function getKPIRecommendations(kpi: KPI, departmentName: string): Promise<KPIRecommendation[]> {
+export async function getKPIRecommendations(kpi: KPI, departmentName: string, departmentDescription?: string): Promise<KPIRecommendation[]> {
   try {
-    const response = await apiClient.post('/api/recommend-kpis', { kpi, departmentName });
+    const response = await apiClient.post('/api/recommend-kpis', { kpi, departmentName, departmentDescription });
     if (!response.ok) throw new Error('Recommendation proxy error');
     return await response.json();
   } catch (error) {
