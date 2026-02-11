@@ -82,11 +82,8 @@ const App: React.FC = () => {
 
     // PWA: Install Prompt Detection
     const handleInstallPrompt = (e: any) => {
-      // Prevent the mini-infobar from appearing on mobile
       e.preventDefault();
-      // Stash the event so it can be triggered later.
       setInstallPrompt(e);
-      // Show the customized install prompt
       setShowInstallBanner(true);
     };
 
@@ -150,6 +147,12 @@ const App: React.FC = () => {
       setInstallPrompt(null);
       setShowInstallBanner(false);
     });
+  };
+
+  const handleLogout = () => {
+      localStorage.removeItem('int_user_session');
+      setCurrentUser(null);
+      setViewMode('dashboard');
   };
 
   const updateKPI = async (deptId: string, updatedKPI: KPI) => {
@@ -297,6 +300,27 @@ const App: React.FC = () => {
             ))}
           </div>
         </nav>
+        
+        {/* User / Logout Section */}
+        <div className="p-4 border-t border-slate-800">
+            <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer group relative">
+                <img src={currentUser.avatar} alt="Profile" className="w-8 h-8 rounded-full bg-slate-800" />
+                <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold text-white truncate">{currentUser.name}</div>
+                    <div className="text-xs text-slate-500 truncate capitalize">{currentUser.role}</div>
+                </div>
+                <button 
+                   onClick={handleLogout}
+                   className="absolute right-2 opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-white bg-slate-700 rounded-md transition-all"
+                   title="Sign Out"
+                   aria-label="Sign Out"
+                >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                </button>
+            </div>
+        </div>
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-slate-950 relative">

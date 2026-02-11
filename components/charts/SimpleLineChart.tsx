@@ -1,5 +1,5 @@
 
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, useState } from 'react';
 import {
   LineChart,
   Line,
@@ -50,56 +50,79 @@ const SimpleLineChart: React.FC<Props> = ({
   showTarget = false 
 }) => {
   const chartRef = useRef<HTMLDivElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
   const targetValue = data[0]?.target;
 
   const chartData = useMemo(() => {
     return showTrend ? calculateTrend(data, 'value') : data;
   }, [data, showTrend]);
 
-  const handleExport = (format: 'png' | 'svg') => {
+  const handleExport = async (format: 'png' | 'svg') => {
     const svgElement = chartRef.current?.querySelector('.recharts-surface');
     if (!svgElement) return;
 
-    const svgData = new XMLSerializer().serializeToString(svgElement);
-    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(svgBlob);
+    setIsExporting(true);
+    
+    try {
+      const svgData = new XMLSerializer().serializeToString(svgElement);
+      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
 
-    if (format === 'svg') {
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `chart-export.svg`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const bbox = svgElement.getBoundingClientRect();
-        canvas.width = bbox.width;
-        canvas.height = bbox.height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.fillStyle = '#0f172a'; // Match background
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0);
-          const pngUrl = canvas.toDataURL('image/png');
-          const link = document.createElement('a');
-          link.href = pngUrl;
-          link.download = `chart-export.png`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        }
-      };
-      img.src = url;
+      if (format === 'svg') {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `chart-export-${Date.now()}.svg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        // Convert to PNG via Canvas
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const bbox = svgElement.getBoundingClientRect();
+          // Scale for better resolution
+          const scale = 2;
+          canvas.width = bbox.width * scale;
+          canvas.height = bbox.height * scale;
+          
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.scale(scale, scale);
+            ctx.fillStyle = '#0f172a'; // Match background
+            ctx.fillRect(0, 0, bbox.width, bbox.height);
+            ctx.drawImage(img, 0, 0, bbox.width, bbox.height);
+            
+            try {
+              const pngUrl = canvas.toDataURL('image/png');
+              const link = document.createElement('a');
+              link.href = pngUrl;
+              link.download = `chart-export-${Date.now()}.png`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            } catch (e) {
+              console.error("Canvas export failed", e);
+              alert("Failed to create PNG image. Security settings may prevent canvas export.");
+            }
+          }
+        };
+        img.onerror = () => {
+             alert("Failed to process chart image.");
+        };
+        img.src = url;
+      }
+    } catch (e) {
+      console.error("Export failed", e);
+    } finally {
+      setIsExporting(false);
     }
   };
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-slate-900 border border-slate-700 p-3 rounded-lg shadow-xl">
+        <div className="bg-slate-900 border border-slate-700 p-3 rounded-lg shadow-xl z-50">
           <p className="text-slate-300 text-xs font-bold mb-2">{label}</p>
           {payload.map((p: any, idx: number) => (
             <div key={idx} className="flex items-center gap-2 text-xs mb-1">
@@ -122,14 +145,30 @@ const SimpleLineChart: React.FC<Props> = ({
 
   return (
     <div className="w-full relative group">
-      <div className="absolute top-[-40px] right-0 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button onClick={() => handleExport('svg')} className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded border border-slate-700">SVG</button>
-        <button onClick={() => handleExport('png')} className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded border border-slate-700">PNG</button>
+      <div className="absolute top-[-30px] right-0 flex gap-2 z-10">
+         <div className="flex gap-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+            <button 
+              onClick={() => handleExport('svg')} 
+              disabled={isExporting}
+              className="text-[10px] bg-slate-800 hover:bg-slate-700 focus:bg-slate-700 text-slate-300 px-2 py-1 rounded border border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+              aria-label="Export chart as SVG"
+            >
+              SVG
+            </button>
+            <button 
+              onClick={() => handleExport('png')} 
+              disabled={isExporting}
+              className="text-[10px] bg-slate-800 hover:bg-slate-700 focus:bg-slate-700 text-slate-300 px-2 py-1 rounded border border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+              aria-label="Export chart as PNG"
+            >
+              {isExporting ? '...' : 'PNG'}
+            </button>
+         </div>
       </div>
       
-      <div ref={chartRef} className="h-[350px] w-full">
+      <div ref={chartRef} className="h-[350px] w-full" role="img" aria-label="Line chart showing performance trends over time">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ bottom: 20 }}>
+          <LineChart data={chartData} margin={{ bottom: 20, top: 10 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
             <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} dy={10} />
             <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />

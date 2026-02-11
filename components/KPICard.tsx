@@ -4,7 +4,6 @@ import { KPI, User, KPIRecommendation } from '../types';
 import { Permissions } from '../lib/permissions';
 import { safeParseFloat, generateStableHistoryData } from '../lib/utils';
 import KPIEditorModal from './Editor/KPIEditorModal';
-import { toPng, toSvg } from 'html-to-image';
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 import SimpleLineChart from './charts/SimpleLineChart';
 import { getKPIRecommendations } from '../services/geminiService';
@@ -47,6 +46,12 @@ const KPICard: React.FC<Props> = ({
     'on-track': 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400',
     'at-risk': 'bg-amber-500/10 border-amber-500/50 text-amber-400',
     'critical': 'bg-rose-500/10 border-rose-500/50 text-rose-400'
+  };
+
+  const statusText = {
+      'on-track': 'Status: On Track',
+      'at-risk': 'Status: At Risk',
+      'critical': 'Status: Critical'
   };
 
   const progressColors = {
@@ -109,7 +114,7 @@ const KPICard: React.FC<Props> = ({
     <>
       <div 
         ref={cardRef}
-        className={`group relative rounded-xl border transition-all duration-300 flex flex-col focus:outline-none focus:ring-2 focus:ring-blue-500 overflow-hidden
+        className={`group relative rounded-xl border transition-all duration-300 flex flex-col focus-within:ring-2 focus-within:ring-blue-500 overflow-hidden outline-none
           ${isSelectMode 
             ? isSelected 
               ? 'bg-blue-600/20 border-blue-500 ring-2 ring-blue-500 shadow-lg' 
@@ -119,7 +124,11 @@ const KPICard: React.FC<Props> = ({
           ${isSelectMode ? 'cursor-pointer' : ''}`}
         onClick={() => isSelectMode && onToggleSelect?.()}
         role={isSelectMode ? "checkbox" : "article"}
+        aria-checked={isSelectMode ? isSelected : undefined}
+        tabIndex={isSelectMode ? 0 : -1}
       >
+        <span className="sr-only">{statusText[kpi.status]}</span>
+        
         {/* Main Content Area */}
         <div className="p-5 flex flex-col justify-between h-40">
           <div className="absolute top-2 right-2 flex gap-1 z-20">
@@ -131,6 +140,7 @@ const KPICard: React.FC<Props> = ({
                   showRecommendations ? 'bg-amber-500 text-slate-900 border-amber-400 scale-110 shadow-lg shadow-amber-500/20' : 'bg-slate-800 text-amber-500 border-slate-700 hover:border-amber-500/50'
                 } ${loadingRecs ? 'animate-pulse' : ''}`}
                 title="AI Metric Discovery"
+                aria-label="Get AI Recommendations"
               >
                 <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM5 10a1 1 0 11-2 0 1 1 0 012 0zM8 16v-1h4v1a2 2 0 11-4 0zM12 14c.015-.34.208-.646.477-.859a4 4 0 10-4.954 0c.27.213.462.519.477.859h4z" />
@@ -140,8 +150,9 @@ const KPICard: React.FC<Props> = ({
 
             <button
               onClick={(e) => { e.stopPropagation(); setShowHistory(true); }}
-              className="action-btn p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg border border-slate-700 opacity-0 group-hover:opacity-100"
+              className="action-btn p-1.5 bg-slate-800 hover:bg-slate-700 focus:bg-slate-700 text-slate-400 hover:text-white rounded-lg border border-slate-700 opacity-0 group-hover:opacity-100 focus:opacity-100"
               title="View History"
+              aria-label="View History Chart"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -151,8 +162,9 @@ const KPICard: React.FC<Props> = ({
             {canEdit && !isSelectMode && (
               <button 
                 onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
-                className="action-btn p-1.5 bg-slate-800 hover:bg-blue-600 text-slate-400 hover:text-white rounded-lg border border-slate-700 opacity-0 group-hover:opacity-100"
+                className="action-btn p-1.5 bg-slate-800 hover:bg-blue-600 focus:bg-blue-600 text-slate-400 hover:text-white rounded-lg border border-slate-700 opacity-0 group-hover:opacity-100 focus:opacity-100"
                 title="Edit KPI"
+                aria-label="Edit KPI"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -202,11 +214,11 @@ const KPICard: React.FC<Props> = ({
               <h3 className="text-3xl font-bold text-white">
                 {kpi.value}<span className="text-lg text-slate-400 ml-0.5">{kpi.unit}</span>
               </h3>
-              <span className={`text-sm font-medium ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
+              <span className={`text-sm font-medium ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`} aria-label={isPositive ? 'Trend Up' : 'Trend Down'}>
                 {isPositive ? '▲' : '▼'} {Math.abs(kpi.change)}%
               </span>
             </div>
-            <div className="w-full h-1.5 bg-slate-700 rounded-full mt-3 overflow-hidden">
+            <div className="w-full h-1.5 bg-slate-700 rounded-full mt-3 overflow-hidden" role="progressbar" aria-valuenow={progressPercent} aria-valuemin={0} aria-valuemax={100}>
               <div 
                 className={`h-full rounded-full bg-gradient-to-r ${progressColors[kpi.status]} transition-all duration-1000`} 
                 style={{ width: `${progressPercent}%` }}
@@ -232,6 +244,7 @@ const KPICard: React.FC<Props> = ({
               <button 
                 onClick={(e) => { e.stopPropagation(); setShowRecommendations(false); }}
                 className="text-amber-500/50 hover:text-amber-500 transition-colors"
+                aria-label="Close recommendations"
               >
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
@@ -277,9 +290,9 @@ const KPICard: React.FC<Props> = ({
       )}
 
       {showHistory && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl p-6 relative">
-             <button onClick={() => setShowHistory(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white">✕</button>
+             <button onClick={() => setShowHistory(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white" aria-label="Close history">✕</button>
              <h3 className="text-xl font-bold text-white mb-6">{kpi.label} History</h3>
              <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800">
                 <SimpleLineChart data={historyData} showTarget showTrend color={isPositive ? '#34d399' : '#f43f5e'} />
