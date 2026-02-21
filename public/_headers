@@ -1,0 +1,20 @@
+# Cloudflare Pages — HTTP response headers
+# https://developers.cloudflare.com/pages/configuration/headers/
+
+# Security headers for all responses
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  X-XSS-Protection: 1; mode=block
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://esm.sh; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://esm.sh https://generativelanguage.googleapis.com https://api.dicebear.com; img-src 'self' data: https://api.dicebear.com; worker-src 'self'
+
+# Service worker must never be cached
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+  Content-Type: application/javascript; charset=utf-8
+
+# Hashed assets can be cached indefinitely
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

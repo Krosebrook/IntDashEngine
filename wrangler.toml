@@ -1,0 +1,15 @@
+# Cloudflare Pages configuration
+# https://developers.cloudflare.com/pages/configuration/wrangler-configuration/
+
+name = "int-dash-engine"
+compatibility_date = "2024-09-23"
+pages_build_output_dir = "./dist"
+
+# Environment variables are set in the Cloudflare Pages dashboard.
+# Never commit real secrets here — use the dashboard or wrangler secret put.
+#
+# Required:
+#   GEMINI_API_KEY — Google Gemini API key (set via dashboard for each environment)
+#
+# To run locally:
+#   wrangler pages dev ./dist --compatibility-date 2024-09-23
