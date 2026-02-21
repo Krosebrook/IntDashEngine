@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "smoke": "npm run typecheck && npm run build && npm run preview"
+    "smoke": "npm run typecheck && npm run build"
   },
   "engines": {
     "node": ">=20.0.0"
