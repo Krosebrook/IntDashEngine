@@ -15,7 +15,7 @@ const UserManagement: React.FC<Props> = ({ currentUser }) => {
   ]);
 
   const [isInviteOpen, setIsInviteOpen] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ email: '', role: 'viewer' as const });
+  const [inviteForm, setInviteForm] = useState({ email: '', role: 'viewer' as User['role'] });
   const [inviteStatus, setInviteStatus] = useState<'idle' | 'sending' | 'success'>('idle');
 
   const updateRole = (userId: string, newRole: User['role']) => {

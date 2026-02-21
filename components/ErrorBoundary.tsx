@@ -14,13 +14,10 @@ interface State {
  * Ensures properties like 'props' and 'state' are correctly typed and recognized by extending React.Component.
  */
 export class ErrorBoundary extends Component<Props, State> {
-  constructor(props: Props) {
-    super(props);
-    this.state = {
-      hasError: false,
-      error: null
-    };
-  }
+  override state: State = {
+    hasError: false,
+    error: null
+  };
 
   static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };

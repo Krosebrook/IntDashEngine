@@ -1,0 +1,125 @@
+
+const CACHE_NAME = 'int-dashboard-v3';
+const OFFLINE_URL = 'offline.html';
+const ASSETS_TO_PRECACHE = [
+  './',
+  'index.html',
+  OFFLINE_URL
+];
+
+// Pre-cache on install
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      console.log('[SW] Pre-caching core assets and offline page');
+      return cache.addAll(ASSETS_TO_PRECACHE);
+    })
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cache) => {
+          if (cache !== CACHE_NAME) {
+            console.log('[SW] Clearing old cache:', cache);
+            return caches.delete(cache);
+          }
+        })
+      );
+    })
+  );
+  self.clients.claim();
+});
+
+/**
+ * Helper to wrap a response with custom metadata headers
+ */
+async function cacheWithMetadata(cache, request, response) {
+  const clonedResponse = response.clone();
+  const headers = new Headers(clonedResponse.headers);
+  headers.set('X-Cache-Timestamp', Date.now().toString());
+  
+  try {
+    const blob = await clonedResponse.blob();
+    const metaResponse = new Response(blob, {
+      status: clonedResponse.status,
+      statusText: clonedResponse.statusText,
+      headers: headers
+    });
+    await cache.put(request, metaResponse);
+  } catch (err) {
+    // Fallback if blob construction fails
+    await cache.put(request, response.clone());
+  }
+}
+
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+
+  const url = new URL(event.request.url);
+
+  // 1. DYNAMIC / SENSITIVE / ACTION-BASED: Network Only
+  // Exclude AI generation, Auth, and specific action-oriented API endpoints.
+  const isDynamic = url.pathname.includes('/api/insights') || 
+                    url.pathname.includes('/api/recommend-kpis') || 
+                    url.pathname.includes('/api/generate-dashboard') ||
+                    url.pathname.includes('/api/auth');
+
+  if (url.hostname === 'generativelanguage.googleapis.com' || isDynamic) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
+  // 2. NAVIGATION: Network First -> Cache -> Offline Fallback
+  // If the user navigates to a page, try network first. 
+  // If offline, serve the cached page. If strictly offline and no cache, serve offline.html.
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then(async (networkResponse) => {
+          const cache = await caches.open(CACHE_NAME);
+          // Update cache with fresh page
+          cacheWithMetadata(cache, event.request, networkResponse.clone());
+          return networkResponse;
+        })
+        .catch(async () => {
+          const cache = await caches.open(CACHE_NAME);
+          const cachedResponse = await cache.match(event.request);
+          // Fallback to offline page if navigation fails and page not cached
+          return cachedResponse || cache.match(OFFLINE_URL);
+        })
+    );
+    return;
+  }
+
+  // 3. STATIC ASSETS & READ-HEAVY DATA: Stale-While-Revalidate
+  // This covers JS, CSS, Images, and potential GET API requests for user profiles/dept info.
+  // We serve from cache immediately for speed, then update in background.
+  event.respondWith(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.match(event.request).then((cachedResponse) => {
+        const fetchPromise = fetch(event.request).then((networkResponse) => {
+          if (networkResponse.ok) {
+            cacheWithMetadata(cache, event.request, networkResponse);
+          }
+          return networkResponse;
+        }).catch((err) => {
+            // Network failure in background is acceptable for SWR; content remains stale but visible.
+            console.debug('Background fetch failed for', event.request.url);
+        });
+
+        return cachedResponse || fetchPromise;
+      });
+    })
+  );
+});
+
+// Handle update command from UI
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});

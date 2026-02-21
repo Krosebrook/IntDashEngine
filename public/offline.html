@@ -1,0 +1,67 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline | INT Inc Dashboard</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 1.5rem;
+            text-align: center;
+        }
+        .offline-logo {
+            width: 5rem;
+            height: 5rem;
+            background-color: #2563eb;
+            border-radius: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 2.25rem;
+            color: #ffffff;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 25px rgba(37, 99, 235, 0.4);
+        }
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+        p {
+            color: #94a3b8;
+            max-width: 28rem;
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+        .retry-btn {
+            padding: 0.75rem 2rem;
+            background-color: #2563eb;
+            color: #ffffff;
+            font-weight: 700;
+            border-radius: 0.75rem;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.2s ease, transform 0.1s ease;
+        }
+        .retry-btn:hover { background-color: #3b82f6; transform: translateY(-1px); }
+    </style>
+</head>
+<body>
+    <div class="offline-logo">INT</div>
+    <h1>You're Offline</h1>
+    <p>The Universal Dashboard Engine requires a connection for real-time updates and AI insights. We'll automatically reconnect once your network is stable.</p>
+    <button onclick="window.location.reload()" class="retry-btn">Retry Connection</button>
+</body>
+</html>
